@@ -1,0 +1,123 @@
+// --- Sensor Pins ---
+#define TRIG_L 2
+#define ECHO_L 3
+#define TRIG_F 4
+#define ECHO_F 5
+#define TRIG_R 6
+#define ECHO_R 7
+
+// --- Motor Pins ---
+#define IN1 8   // Left Motor
+#define IN2 9
+#define IN3 10  // Right Motor
+#define IN4 11
+
+// --- Threshold Distance in cm ---
+#define DIST_THRESHOLD 40
+
+// --- Distance Averaging ---
+long readDistanceAvg(int trigPin, int echoPin) {
+  long total = 0;
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+    long duration = pulseIn(echoPin, HIGH, 30000); // Timeout in 30 ms
+    total += duration * 0.034 / 2;
+    delay(10);
+  }
+  return total / 3;
+}
+
+// --- Motor Functions ---
+void moveForward() {
+  digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);  // Left forward
+  digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);  // Right forward
+}
+
+void moveBackward() {
+  digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH);
+}
+
+void turnLeft() {
+  digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
+}
+
+void turnRight() {
+  digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH);
+}
+
+void stopMotors() {
+  digitalWrite(IN1, LOW); digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW); digitalWrite(IN4, LOW);
+}
+
+// --- Setup ---
+void setup() {
+  pinMode(TRIG_L, OUTPUT); pinMode(ECHO_L, INPUT);
+  pinMode(TRIG_F, OUTPUT); pinMode(ECHO_F, INPUT);
+  pinMode(TRIG_R, OUTPUT); pinMode(ECHO_R, INPUT);
+
+  pinMode(IN1, OUTPUT); pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT); pinMode(IN4, OUTPUT);
+
+  Serial.begin(9600);
+  stopMotors(); // Ensure bot is stable at start
+  delay(1000);  // Small wait before moving
+}
+
+// --- Main Loop ---
+void loop() {
+  long front = readDistanceAvg(TRIG_F, ECHO_F);
+  long left  = readDistanceAvg(TRIG_L, ECHO_L);
+  long right = readDistanceAvg(TRIG_R, ECHO_R);
+
+  Serial.print("L: "); Serial.print(left);
+  Serial.print(" F: "); Serial.print(front);
+  Serial.print(" R: "); Serial.println(right);
+
+  // === Core Navigation Logic ===
+  if (front > DIST_THRESHOLD) {
+    // Front is clear
+    if (left < DIST_THRESHOLD && right > DIST_THRESHOLD) {
+      // Obstacle on left → turn right
+      stopMotors(); delay(100);
+      turnRight(); delay(300);
+    }
+    else if (right < DIST_THRESHOLD && left > DIST_THRESHOLD) {
+      // Obstacle on right → turn left
+      stopMotors(); delay(100);
+      turnLeft(); delay(300);
+    }
+    else {
+      // Clear forward → move forward
+      moveForward();
+    }
+  } else {
+    // Front is blocked
+    stopMotors(); delay(200);
+    moveBackward(); delay(500); // Back up
+    stopMotors(); delay(200);
+
+    // Recheck sides after backing up
+    left = readDistanceAvg(TRIG_L, ECHO_L);
+    right = readDistanceAvg(TRIG_R, ECHO_R);
+
+    if (left > right && left > DIST_THRESHOLD) {
+      turnRight(); delay(500);
+    } else if (right >= left && right > DIST_THRESHOLD) {
+      turnLeft(); delay(500);
+    } else {
+      // Still blocked → back again
+      moveBackward(); delay(600);
+    }
+    stopMotors(); delay(200);
+  }
+
+  delay(100); // Small buffer to avoid rapid switching
+}
